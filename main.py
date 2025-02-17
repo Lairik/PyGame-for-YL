@@ -33,7 +33,7 @@ putin_core = pygame.mixer.Sound("sounds/vyi-rabotat-budete.ogg")
 putin_core.set_volume(0.7)
 
 met_m = pygame.mixer.Sound("sounds/inecraft_levelu.ogg")
-met_m.set_volume(0)
+met_m.set_volume(0.3)
 
 walk_left = [
     pygame.image.load('images/left/1.png'),
@@ -197,7 +197,8 @@ def main_menu():
     running = True
     while running:
 
-        bg_main = pygame.image.load('images/bg.jpg')
+        bg_main = pygame.image.load('images/bg_main.jpg')
+        bg_main = pygame.transform.scale(bg_main, (W, H))
 
         sc.blit(bg_main, (0, 0))
 
