@@ -2,6 +2,7 @@ import pygame
 from random import randint
 import json
 
+
 paused = False
 
 pygame.font.init()
@@ -20,14 +21,19 @@ W, H = 900, 600
 
 score = 0
 
-pygame.mixer.music.load('sounds/neukrotimoe-stremlenie-k-pobede-2341.ogg')
-pygame.mixer.music.play(-1)
+# pygame.mixer.music.load('sounds/neukrotimoe-stremlenie-k-pobede-2341.ogg')
+# pygame.mixer.music.play(-1)
 
 col_m = pygame.mixer.Sound("sounds/inecraft_damage.ogg")
 
 br_m = pygame.mixer.Sound("sounds/vitayuschiy-v-oblakah-mechtatel-321.ogg")
+br_m.set_volume(0.3)
+
+putin_core = pygame.mixer.Sound("sounds/vyi-rabotat-budete.ogg")
+putin_core.set_volume(0.7)
+
 met_m = pygame.mixer.Sound("sounds/inecraft_levelu.ogg")
-met_m.set_volume(0.1)
+met_m.set_volume(0)
 
 walk_left = [
     pygame.image.load('images/left/1.png'),
@@ -63,6 +69,15 @@ walk_right = [
     pygame.image.load('images/right/8.png'),
 ]
 
+meteor_frames = [
+    pygame.image.load('images/meteorit/1.png'),
+    pygame.image.load('images/meteorit/2.png'),
+    pygame.image.load('images/meteorit/3.png'),
+    pygame.image.load('images/meteorit/4.png'),
+    pygame.image.load('images/meteorit/5.png'),
+    pygame.image.load('images/meteorit/6.png'),
+]
+
 sc = pygame.display.set_mode((W, H))
 
 bg = pygame.image.load('images/фон.PNG')
@@ -80,13 +95,19 @@ class Meteorit(pygame.sprite.Sprite):
     def __init__(self, x, surf, group):
         global meteor_speed
         pygame.sprite.Sprite.__init__(self)
-        self.image = surf
+        self.frames = meteor_frames
+        self.image = self.frames[0]
         self.rect = self.image.get_rect(center=(x, 0))
         self.speed = meteor_speed
         self.add(group)
+        self.animation_count = 0
 
     def update(self, *args):
         global score
+        self.animation_count += 1
+        if self.animation_count >= len(self.frames) * 5:
+            self.animation_count = 0
+        self.image = self.frames[self.animation_count // 5]
         if self.rect.y < args[0] - 20:
             if not paused:
                 self.rect.y += self.speed
@@ -114,11 +135,11 @@ def music_stop():
     else:
         pygame.mixer.music.pause()
 
-class Hero(pygame.sprite.Sprite):
-    def __init__(self, player_img, x, y, speed):
+class Player(pygame.sprite.Sprite):
+    def __init__(self, x, y, speed):
         pygame.sprite.Sprite.__init__(self)
-        self.img = player_img
-        self.rect = self.img.get_rect()
+        self.img = walk_no_movement[0]
+        self.rect = self.img.get_rect(center=(x, y))
         self.rect.x = x
         self.rect.y = y
         self.speed = speed
@@ -126,13 +147,7 @@ class Hero(pygame.sprite.Sprite):
         self.right = False
         self.count = 0
 
-class Player(Hero):
-    def collides(self):
-        global game_over
-        for meteor in meteors:
-            if player.rect.inflate(-50, -20).colliderect(meteor.rect.inflate(-20, -50)):
-                col_m.play()
-                game_over = True
+
     def update(self):
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LEFT] and self.rect.x > 5:
@@ -146,24 +161,29 @@ class Player(Hero):
         else:
             self.left = False
             self.right = False
-            self.count = 0
+
 
     def animation(self):
-        if self.count + 1 > 40:
+        if self.count + 1 > 60:
             self.count = 0
-        if self.left == True:
+        if self.left:
             sc.blit(walk_left[self.count // 8], (self.rect.x, self.rect.y))
-            self.count += 1
-        elif self.right == True:
+        elif self.right:
             sc.blit(walk_right[self.count // 8], (self.rect.x, self.rect.y))
-            self.count += 1
         else:
             sc.blit(walk_no_movement[self.count // 9], (self.rect.x, self.rect.y))
-            self.count += 1
 
-player_img = pygame.image.load('images/no movement/1.png')
+        self.count += 1
 
-player = Player(player_img, W//2 - 50, 390, 7)
+    def collides(self):
+        global game_over
+        for meteor in meteors:
+            if player.rect.inflate(-100, -20).colliderect(meteor.rect.inflate(-20, -50)):
+                col_m.play()
+                game_over = True
+
+
+player = Player(W//2 - 50, 390, 7)
 
 bg_2 = pygame.image.load('images/космос.jpg').convert_alpha()
 bg_2 = pygame.transform.scale(bg_2, (900, 600))
@@ -171,12 +191,108 @@ bg_2 = pygame.transform.scale(bg_2, (900, 600))
 game_over = False
 record = 0
 
+def main_menu():
+    global play, paused
+
+    running = True
+    while running:
+
+        bg_main = pygame.image.load('images/bg.jpg')
+
+        sc.blit(bg_main, (0, 0))
+
+        # Создаем шрифт для кнопок
+        font = pygame.font.Font(None, 50)
+
+        # Рендер кнопок
+        play_button = font.render("Играть", True, WHITE)
+        settings_button = font.render("Настройки", True, WHITE, GREEN)
+        rules_button = font.render("Правила игры", True, WHITE, GREEN)
+
+        # Позиционируем кнопки
+        play_button_rect = play_button.get_rect(center=(W // 2, H // 3))
+        settings_button_rect = settings_button.get_rect(center=(W // 2, H // 2))
+        rules_button_rect = rules_button.get_rect(center=(W // 2, H // 1.5))
+
+        # Отображаем кнопки на экране
+        sc.blit(play_button, play_button_rect)
+        sc.blit(settings_button, settings_button_rect)
+        sc.blit(rules_button, rules_button_rect)
+
+        pygame.display.flip()
+
+        # Обработка событий
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                x, y = event.pos
+                if play_button_rect.collidepoint(x, y):
+                    # Начать игру
+                    running = False
+                elif settings_button_rect.collidepoint(x, y):
+                    settings_menu()
+                elif rules_button_rect.collidepoint(x, y):
+                    rules_menu()
+
+def settings_menu():
+    running = True
+    while running:
+        sc.fill(BLACK)
+        font = pygame.font.Font(None, 36)
+        settings_text = font.render("Настройки (нажмите Esc для возврата)", True, WHITE)
+        sc.blit(settings_text, (W // 4, H // 3))
+
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                running = False
+
+def rules_menu():
+    running = True
+    while running:
+        sc.fill(BLACK)
+        font = pygame.font.Font(None, 36)
+        rules_text = font.render("Правила игры: Избегайте метеоритов!", True, WHITE)
+        sc.blit(rules_text, (W // 4, H // 3))
+
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                running = False
+
+def draw_score(score):
+    # Задаём шрифт и размер
+    font = pygame.font.Font(None, 36)
+
+    # Создаём текст для счёта
+    score_text = font.render(f"Счёт: {score}", True, WHITE)
+
+    # Позиция текста
+    score_rect = score_text.get_rect(topright=(W - 20, 20))
+
+    # Отрисовка фона для плашки
+    pygame.draw.rect(sc, BLACK, (score_rect.x - 10, score_rect.y - 5, score_rect.width + 20, score_rect.height + 10), border_radius=10)
+
+    # Отображаем текст поверх фона
+    sc.blit(score_text, score_rect)
 
 
+main_menu()
 while True:
     if game_over:
-        br_m.play()
         music_stop()
+        br_m.play()
         if score > record:
             record = score
             with open("record.json", "w") as f:
@@ -246,7 +362,15 @@ while True:
                 elif event.key == pygame.K_DOWN:
                     vol -= 0.1
                     pygame.mixer.music.set_volume(vol)
-
+                elif event.key == pygame.K_z:
+                    scary = pygame.image.load("images/putin.jpg")
+                    scary = pygame.transform.scale(scary,(W, H))
+                    sc.blit(scary, (0, 0))
+                    music_stop()
+                    pygame.display.flip()
+                    putin_core.play()
+                    pygame.time.delay(5500)
+                    exit()
 
     if paused:
         f2 = pygame.font.Font(None, 70)
@@ -256,6 +380,7 @@ while True:
         continue
 
     sc.blit(bg, (0, 0))
+    draw_score(score)
     player.collides()
     meteors.draw(sc)
     player.update()
@@ -265,5 +390,3 @@ while True:
 
     clock.tick(FPS)
     meteors.update(H)
-
-
