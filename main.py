@@ -2,13 +2,12 @@ import pygame
 import json
 import random
 import math
+import time
 
-# Инициализация Pygame
 pygame.font.init()
 pygame.mixer.pre_init(44100, -16, 1, 512)
 pygame.init()
 
-# Константы
 W, H = 900, 600
 FPS = 60
 BLACK = (0, 0, 0)
@@ -16,35 +15,54 @@ WHITE = (255, 255, 255)
 GREEN = (0, 255, 0)
 DARK_GREEN = (0, 100, 0)
 BLUE = (100, 100, 255)
+GRAY = (150, 150, 150)
+RED = (255, 50, 50)
 
-# Загрузка изображений
 bg_main = pygame.image.load('images/bg_main.png')
 
 bg = pygame.image.load('images/фон.PNG')
-bg = pygame.transform.scale(bg, (900, 600))
+bg = pygame.transform.scale(bg, (W, H))
 
 bg_2 = pygame.image.load('images/космос.jpg')
-bg_2 = pygame.transform.scale(bg_2, (900, 600))
+bg_2 = pygame.transform.scale(bg_2, (W, H))
 
 ufo_image = pygame.image.load("images/ufo.png")
 ufo_image = pygame.transform.scale(ufo_image, (170, 110))
-ufo_rect = ufo_image.get_rect()
+ufo_rect = ufo_image.get_rect(centerx = W//2, centery = 100)
 
 boss_image = pygame.image.load("images/LazerBoss.png")
-boss_image = pygame.transform.scale(boss_image, (200, 250))
-boss_rect = boss_image.get_rect()
+boss_image = pygame.transform.scale(boss_image, (565 // 6, 920 // 6))
+boss_rect = boss_image.get_rect(centerx = W//2, centery = 100)
+
+full_heart = pygame.image.load("images/full_heart.png")
+empty_heart = pygame.image.load("images/empty_heart.png")
+full_heart = pygame.transform.scale(full_heart, (40, 40))
+empty_heart = pygame.transform.scale(empty_heart, (40, 40))
+
+score_view = pygame.image.load("images/score_view.png")
+score_view = pygame.transform.scale(score_view, (908 // 6, 678 // 6))
 
 walk_left = [pygame.image.load(f'images/left/{i}.png') for i in range(1, 9)]
-walk_no_movement = [pygame.image.load(f'images/no movement/{i}.png') for i in range(1, 10)]
-walk_right = [pygame.image.load(f'images/right/{i}.png') for i in range(1, 9)]
+walk_no_movement_left = [pygame.image.load(f'images/no movement/left/{i}.png') for i in range(1, 10)]
+walk_no_movement_right = [pygame.image.load(f'images/no movement/right/{i}.png') for i in range(1, 10)]
+walk_right = [pygame.image.load(f'images/right/{i}.png') for i in range(1, 8)]
 meteor_frames = [pygame.image.load(f'images/meteorit/{i}.png') for i in range(1, 7)]
 
 shield_img = pygame.image.load("images/shield.png")
 booster_img = pygame.image.load("images/booster.png")
+health_img = pygame.image.load("images/health.png")
 shield_overlay = pygame.image.load("images/shield_effect.png")
-shield_overlay = pygame.transform.scale(shield_overlay, (200, 200))
+shield_overlay = pygame.transform.scale(shield_overlay, (164, 164))
 
-# Глобальные переменные
+
+colors = {
+    "Щит": BLUE,
+    "Ускорение": GREEN,
+}
+
+active_powerups = {}
+game_start_time = 0
+elapsed_time = None
 boss = None
 boss_2 = None
 paused = False
@@ -66,6 +84,21 @@ ufo_charges = []
 pygame.time.set_timer(pygame.USEREVENT, spawn_delay)
 
 # Загрузка звуков
+music_volume = 0.5
+pygame.mixer.music.set_volume(music_volume)
+
+# Ползунок
+slider_start_x = 10
+slider_end_x = 210
+slider_y = 100
+slider_width = 200
+slider_height = 5
+marker_radius = 10
+
+# Начальная позиция маркера
+slider_x = slider_start_x + int(music_volume * slider_width)
+
+dragging = False
 bg_music = pygame.mixer.Sound("sounds/bgmusic.ogg")
 bg_music.set_volume(vol)
 boss_music = pygame.mixer.Sound("sounds/boss_music.ogg")
@@ -90,8 +123,8 @@ class UFOBoss:
             self.speed = -self.speed
 
     def shoot(self):
-        if random.randint(1, 90) == 1:
-            ball = GreenBall(ufo_rect.centerx, self.rect.bottom, random.choice([-4, 4]), 3)
+        if random.randint(1, 70) == 1:
+            ball = GreenBall(ufo_rect.centerx, self.rect.centery, random.choice([-4, 4]), 3)
             ufo_charges.append(ball)
 
 
@@ -109,6 +142,9 @@ class GreenBall:
 
     def draw(self, sc):
         pygame.draw.circle(sc, DARK_GREEN, self.rect.center, 10)
+
+    def kill(self):
+        ufo_charges.remove(self)
 
 
 class PowerUp(pygame.sprite.Sprite):
@@ -155,25 +191,29 @@ class Meteorit(pygame.sprite.Sprite):
 class Player(pygame.sprite.Sprite):
     def __init__(self, x, y, speed):
         pygame.sprite.Sprite.__init__(self)
-        self.img = walk_no_movement[0]
-        self.image = pygame.transform.scale(self.img, (10, 10))
+        self.img = pygame.transform.scale(pygame.image.load("images/no movement/left/1.png"), (128, 128))
         self.rect = self.img.get_rect(center=(x, y))
         self.rect.x = x
         self.rect.y = y
+        self.hitbox = pygame.Rect(self.rect.x + 20 , self.rect.y + 20, self.rect.width - 40, self.rect.height - 35)
         self.is_shielded = False
-        self.bosted = False
+        self.boosted = False
         self.left = False
         self.right = False
         self.count = 0
         self.speed = speed
+        self.health = 3
+        self.facing_left = True
+        self.invincibility_timer = 0
+
 
     def update(self):
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT] and self.rect.x > -10:
+        if keys[pygame.K_LEFT] and self.rect.x > 0:
             self.rect.x -= self.speed
             self.left = True
             self.right = False
-        elif keys[pygame.K_RIGHT] and self.rect.x < W - 125:
+        elif keys[pygame.K_RIGHT] and self.rect.x < W - 100:
             self.rect.x += self.speed
             self.left = False
             self.right = True
@@ -181,68 +221,78 @@ class Player(pygame.sprite.Sprite):
             self.left = False
             self.right = False
 
+        self.hitbox.x = self.rect.x + 5
+        self.hitbox.y = self.rect.y + 20
+
+        if self.invincibility_timer > 0:
+            self.invincibility_timer -= 1
+
+    # def draw_hitbox(self, screen):
+    #     pygame.draw.rect(screen, (255, 0, 0), self.hitbox, 2)
+
     def apply_powerup(self, powerup):
+        global active_powerups
         if powerup.type == "shield":
             self.is_shielded = True
+            active_powerups["Щит"] = 5
             pygame.time.set_timer(pygame.USEREVENT + 1, 5000)
         elif powerup.type == "booster":
             if self.speed == 7:
                 self.speed = 10
+            active_powerups["Ускорение"] = 5
             pygame.time.set_timer(pygame.USEREVENT + 2, 5000)
+        elif powerup.type == "health":
+            if self.health != 3:
+                self.health += 1
         powerup.kill()
 
     def animation(self):
-        if self.count + 1 > 60:
-            self.count = 0
+        total_frames = 60
+        self.count = (self.count + 1) % total_frames
+
+        walk_right_index = (self.count // 8) % len(walk_right)
+        walk_left_index = (self.count // 8) % len(walk_left)
+        idle_left_index = (self.count // 9) % len(walk_no_movement_left)
+        idle_right_index = (self.count // 9) % len(walk_no_movement_right)
+
         if self.left:
-            sc.blit(pygame.transform.scale(walk_left[self.count // 8], (128, 128)), (self.rect.x, self.rect.y))
+            sc.blit(walk_left[walk_left_index], (self.rect.x, self.rect.y))
+            self.facing_left = True
         elif self.right:
-            sc.blit(pygame.transform.scale(walk_right[self.count // 8], (128, 128)), (self.rect.x, self.rect.y))
+            sc.blit(walk_right[walk_right_index], (self.rect.x, self.rect.y))
+            self.facing_left = False
         else:
-            sc.blit(pygame.transform.scale(walk_no_movement[self.count // 9], (128, 128)), (self.rect.x, self.rect.y))
+            idle_animation = walk_no_movement_left if self.facing_left else walk_no_movement_right
+            idle_index = idle_left_index if self.facing_left else idle_right_index
+            sc.blit(pygame.transform.scale(idle_animation[idle_index], (92, 128)), (self.rect.x, self.rect.y))
 
         if self.is_shielded:
-            shield_x = self.rect.x - 25
-            shield_y = self.rect.y - 25
+            shield_x = self.rect.centerx - shield_overlay.get_width() // 2
+            shield_y = self.rect.centery - shield_overlay.get_height() // 2
             sc.blit(shield_overlay, (shield_x, shield_y))
 
-        self.count += 1
+    def handle_collision(self, sprite_group, collision_type):
+        global game_over
+        for sprite in sprite_group:
+            if self.hitbox.colliderect(sprite.rect):
+                sprite.kill()
+                if self.is_shielded:
+                    self.is_shielded = False
+                elif self.invincibility_timer == 0:
+                    self.health -= 1
+                    self.invincibility_timer = 60
+                    if self.health <= 0:
+                        game_over = True
+                    col_music.play()
 
     def collides(self):
-        global game_over, vol
         for powerup in powerups:
-            if self.rect.colliderect(powerup.rect):
+            if self.hitbox.colliderect(powerup.rect):
                 self.apply_powerup(powerup)
-                powerup.kill()
 
-        for meteor in meteors:
-            if self.rect.inflate(-100, -20).colliderect(meteor.rect.inflate(-20, -50)):
-                if self.is_shielded:
-                    meteor.kill()
-                    self.is_shielded = False
-                else:
-                    game_over = True
-                col_music.play()
-
-        for ball in ufo_charges:
-            if ball.rect.top >= H - 10:
-                ufo_charges.remove(ball)
-            if self.rect.inflate(-100, -20).colliderect(ball.rect):
-                if self.is_shielded:
-                    ufo_charges.remove(ball)
-                    self.is_shielded = False
-                else:
-                    game_over = True
-                col_music.play()
-
-        for laser in boss_lasers:
-            if self.rect.inflate(-100, -20).colliderect(laser.rect):
-                if self.is_shielded:
-                    laser.kill()
-                    self.is_shielded = False
-                else:
-                    game_over = True
-                col_music.play()
+        self.handle_collision(meteors, 'meteor')
+        self.handle_collision(ufo_charges, 'ufo_charge')
+        self.handle_collision(boss_lasers, 'laser')
 
 class LaserBoss():
     def __init__(self):
@@ -303,13 +353,18 @@ class Laser(pygame.sprite.Sprite):
 
 def create_powerup(group):
     max_attempts = 10
-    if random.randint(1, 10) > 8:
+    if random.randint(1, 10) > 9:
         for _ in range(max_attempts):
             x = random.randint(20, W - 20)
             powerup_rect = pygame.Rect(x, 0, 70, 65)
             if not any(powerup_rect.colliderect(meteor.rect) for meteor in meteors):
-                power_type = random.choice(["shield", "booster"])
-                image = shield_img if power_type == "shield" else booster_img
+                power_type = random.choice(["shield", "booster", "health"])
+                if power_type == "shield":
+                    image = shield_img
+                elif power_type == "booster":
+                    image = booster_img
+                else:
+                    image = health_img
                 return PowerUp(x, image, power_type, group)
 
 
@@ -324,11 +379,17 @@ def createMeteorit(group):
 
 
 def draw_score(score):
-    font = pygame.font.Font(None, 36)
-    score_text = font.render(f"Счёт: {score}", True, WHITE)
-    score_rect = score_text.get_rect(topright=(W - 20, 20))
-    pygame.draw.rect(sc, BLACK, (score_rect.x - 10, score_rect.y - 5, score_rect.width + 20, score_rect.height + 10), border_radius=10)
+    global score_view
+    score_img_rect = score_view.get_rect(topleft=(10, 55))
+    sc.blit(score_view, score_img_rect)
+    font = pygame.font.Font(None, 40)
+    score_text = font.render(f" {score}", True, WHITE)
+    score_rect = score_text.get_rect(topleft=(95, 140))
     sc.blit(score_text, score_rect)
+    elapsed_time = int(time.time() - game_start_time)
+    time_text = font.render(f" {elapsed_time}с.", True, WHITE)
+    time_rect = time_text.get_rect(topleft=(115, 90))
+    sc.blit(time_text, time_rect)
 
 def toggle_music():
     global music_enabled
@@ -337,16 +398,13 @@ def toggle_music():
     else:
         pygame.mixer.music.pause()
 
-def change_volume(delta):
-    global vol
-    vol += delta
-    vol = max(0, min(1, vol))  # Ограничение громкости в диапазоне от 0 до 1
-    pygame.mixer.music.set_volume(vol)
-    bg_music.set_volume(vol)
-    boss_music.set_volume(vol)
-    br_m.set_volume(vol)
-    putin_core.set_volume(vol)
-    col_music.set_volume(vol)
+def draw_health(sc):
+    for i in range(3):
+        heart_x = 10 + i * 50
+        if i < player.health:
+            sc.blit(full_heart, (heart_x, 10))
+        else:
+            sc.blit(empty_heart, (heart_x, 10))
 
 def main_menu():
     global play, paused, bg_main
@@ -361,7 +419,8 @@ def main_menu():
             pygame.mixer.music.load('sounds/bgmusic.ogg')
             pygame.mixer.music.play(-1)
 
-        chill_preview = pygame.image.load('images/no movement/4.png')
+        chill_preview = pygame.image.load('images/no movement/left/1.png')
+        chill_preview = pygame.transform.scale(chill_preview, (128, 128))
         sc.blit(chill_preview, (700, 400))
 
         font = pygame.font.Font(None, 50)
@@ -401,7 +460,10 @@ def main_menu():
                     rules_menu()
 
 def settings_menu():
-    global vol
+    global vol, dragging, music_volume, slider_start_x
+
+
+    slider_x = slider_start_x + int(music_volume * slider_width)
 
     running = True
     while running:
@@ -409,39 +471,49 @@ def settings_menu():
         sc.blit(settings_img, (-100, -50))
         font = pygame.font.Font(None, 36)
 
-        # Текст настроек
         settings_text = font.render("Настройки (нажмите Esc для возврата)", True, WHITE, BLACK)
         sc.blit(settings_text, (10, 10))
 
-        # Кнопка включения/выключения музыки
         music_toggle_text = font.render("Регулировка музыки", True, WHITE, BLACK)
         music_toggle_rect = music_toggle_text.get_rect(topleft=(10, 50))
         sc.blit(music_toggle_text, music_toggle_rect)
 
-        # Кнопки регулировки громкости
-        volume_up_text = font.render("Громкость +", True, WHITE, BLACK)
-        volume_up_rect = volume_up_text.get_rect(topleft=(10, 100))
-        sc.blit(volume_up_text, volume_up_rect)
-
-        volume_down_text = font.render("Громкость -", True, WHITE, BLACK)
-        volume_down_rect = volume_down_text.get_rect(topleft=(10, 150))
-        sc.blit(volume_down_text, volume_down_rect)
-
-
         pygame.display.flip()
 
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                exit()
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if event.type == pygame.QUIT or event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 running = False
+
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                x, y = event.pos
-                if volume_up_rect.collidepoint(x, y):
-                    change_volume(0.1)
-                elif volume_down_rect.collidepoint(x, y):
-                    change_volume(-0.1)
+                mouse_x, mouse_y = event.pos
+                if (slider_x - marker_radius <= mouse_x <= slider_x + marker_radius and
+                        slider_y - marker_radius <= mouse_y <= slider_y + marker_radius):
+                    dragging = True
+
+            elif event.type == pygame.MOUSEBUTTONUP:
+                dragging = False  # Отпускаем маркер
+
+            elif event.type == pygame.MOUSEMOTION:
+                if dragging:
+                    # Обновляем позицию ползунка в пределах линии
+                    slider_x = max(slider_start_x, min(slider_end_x, event.pos[0]))
+                    music_volume = (slider_x - slider_start_x) / slider_width
+                    pygame.mixer.music.set_volume(music_volume)
+                    bg_music.set_volume(music_volume)
+                    boss_music.set_volume(music_volume)
+                    br_m.set_volume(music_volume)
+                    putin_core.set_volume(music_volume)
+                    col_music.set_volume(music_volume)
+
+        # Отрисовка элементов
+        pygame.draw.line(sc, GRAY, (slider_start_x, slider_y), (slider_end_x, slider_y), slider_height)
+        pygame.draw.circle(sc, RED, (slider_x, slider_y), marker_radius)
+
+        # Текст с уровнем громкости
+        volume_text = font.render(f"Громкость: {int(music_volume * 100)}%", True, WHITE)
+        sc.blit(volume_text, (10, slider_y + 25))
+
+        pygame.display.update()
 
 def rules_menu():
     running = True
@@ -462,6 +534,18 @@ def rules_menu():
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 running = False
 
+def draw_powerup_timer(sc):
+    global active_powerups, colors
+    font = pygame.font.Font(None, 36)
+    y_offset = 60
+
+    for powerup_name, time_left in active_powerups.items():
+        timer_text = font.render(f"{powerup_name}: {int(time_left)}s", True, colors.get(powerup_name, WHITE))
+        timer_rect = timer_text.get_rect(topright=(W - 20, y_offset))
+        pygame.draw.rect(sc, BLACK, (timer_rect.x - 10, timer_rect.y - 5, timer_rect.width + 20, timer_rect.height + 10), border_radius=10)
+        sc.blit(timer_text, timer_rect)
+        y_offset += 40
+
 # Инициализация групп спрайтов
 meteors = pygame.sprite.Group()
 powerups = pygame.sprite.Group()
@@ -476,7 +560,7 @@ clock = pygame.time.Clock()
 
 
 def handle_game_over():
-    global game_over, score, record, powerups, ufo_charges, boss_active, boss, spawn_delay, fl_music, paused, music_enabled, boss_music
+    global game_over, score, record, powerups, ufo_charges, boss_active, boss, spawn_delay, fl_music, paused, music_enabled, boss_music, elapsed_time
 
     # Остановка музыки и воспроизведение звука завершения игры
     music_enabled = False
@@ -500,13 +584,20 @@ def handle_game_over():
 
         # Заголовок "Игра окончена!"
         title = f1.render("Игра окончена!", True, BLACK, WHITE)
-        sc.blit(title, (W // 2 - 100, H // 4))
+        sc.blit(title, (W // 2 - 100, H // 4 - 50))
 
         # Отображение счета и рекорда
         score_text = f1.render(f"Ваш счет: {score}", True, BLACK, WHITE)
         record_text = f1.render(f"Рекорд: {record}", True, BLACK, WHITE)
         sc.blit(score_text, (W // 2 - 80, H // 4 + 50))
         sc.blit(record_text, (W // 2 - 80, H // 4 + 100))
+
+        if elapsed_time is None:
+            elapsed_time = int(time.time() - game_start_time)
+        minutes = elapsed_time // 60
+        seconds = elapsed_time % 60
+        time_text = f1.render(f"Вы продержались: {minutes}:{seconds:02}", True, BLACK, WHITE)
+        sc.blit(time_text, (W // 2 - 160, H // 4))
 
         # Кнопки "Играть снова" и "Выход" и "Главное меню"
         play_again_button = f1.render("Играть снова", True, BLACK, GREEN)
@@ -547,13 +638,14 @@ def handle_game_over():
                     exit()
 
 def resert():
-    global game_over, score, meteors, powerups, ufo_charges, boss_lasers, boss_active, boss_2_active, boss, boss_2, meteor_speed, spawn_delay, player, music_enabled
+    global game_over, score, meteors, powerups, ufo_charges, boss_lasers, boss_active, boss_2_active, boss, boss_2, meteor_speed, spawn_delay, player, music_enabled, game_start_time, active_powerups
     player = None
     player = Player(W//2 - 64, H - 210, player_speed)
     meteors.empty()
     powerups.empty()
     boss_lasers.empty()
     ufo_charges.clear()
+    active_powerups = {}
     boss_active = False
     boss_2_active = False
     boss = None
@@ -566,6 +658,7 @@ def resert():
     br_m.stop()
     music_enabled = True
     toggle_music()
+    game_start_time = time.time()
 
 # Example of modularizing the game loop
 def handle_events():
@@ -583,7 +676,7 @@ def handle_events():
         elif event.type == pygame.USEREVENT + 2:
             player.speed = 7
 
-        if score == 20 and not boss_active:
+        if score == 45 and not boss_active:
             music_enabled = False
             toggle_music()
             boss_music.play()
@@ -591,7 +684,7 @@ def handle_events():
             boss_active = True
             boss_timer = pygame.time.get_ticks()
 
-        if score == 40 and not boss_2_active:
+        if score == 20 and not boss_2_active:
             music_enabled = False
             toggle_music()
             boss_music.play()
@@ -599,9 +692,9 @@ def handle_events():
             boss_2_active = True
             boss_timer = pygame.time.get_ticks()
 
-        if score % 10 == 0 and score > 0:
+        if score % 5 == 0 and score > 0:
             meteor_speed += 0.2
-            spawn_delay = max(300, spawn_delay - 50)
+            spawn_delay = max(400, spawn_delay - 50)
             pygame.time.set_timer(pygame.USEREVENT, spawn_delay)
 
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -611,6 +704,8 @@ def handle_events():
                 scary = pygame.transform.scale(scary, (W, H))
                 sc.blit(scary, (0, 0))
                 pygame.display.flip()
+                music_enabled = False
+                toggle_music()
                 putin_core.play()
                 pygame.time.delay(5500)
                 exit()
@@ -618,7 +713,7 @@ def handle_events():
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_p:
                 paused = not paused
-            if pygame.time.get_ticks() - boss_timer >= 15000:
+            if pygame.time.get_ticks() - boss_timer >= 22000:
                 boss_music.stop()
                 music_enabled = True
                 toggle_music()
@@ -626,12 +721,10 @@ def handle_events():
                 boss_2_active = False
                 boss = None
                 boss_2 = None
-                ufo_charges = []
-                boss_lasers.empty()
                 meteor_speed = 5
 
 def update_game_state():
-    global paused, boss
+    global paused, boss, powerup_timer, active_powerups
     if not paused:
         player.update()
         meteors.update(H)
@@ -639,28 +732,43 @@ def update_game_state():
         if boss_active:
             boss.move()
             boss.shoot()
-            for ball in ufo_charges:
-                ball.update()
         if boss_2_active:
             boss_2.move()
-            boss_lasers.update()
+        boss_lasers.update()
+        for ball in ufo_charges:
+            ball.update()
+
+    for powerup_name in list(active_powerups.keys()):
+        active_powerups[powerup_name] -= 1 / FPS  # Уменьшение времени
+        if active_powerups[powerup_name] <= 0:
+            del active_powerups[powerup_name]  # Удаление улучшения, если время истекло
+            if powerup_name == "Щит":
+                player.is_shielded = False
+            elif powerup_name == "Ускорение":
+                player.boosted = False
+                player.speed = 7
 
 
 def render_game():
     sc.blit(bg, (0, 0))
     if boss_active:
         sc.blit(ufo_image, ufo_rect)
-        for ball in ufo_charges:
-            ball.draw(sc)
+
     if boss_2_active:
         sc.blit(boss_image, boss_rect)
-        boss_lasers.draw(sc)
 
+    for ball in ufo_charges:
+        ball.draw(sc)
+
+    boss_lasers.draw(sc)
     draw_score(score)
     player.collides()
     player.animation()
+    # player.draw_hitbox(sc)
+    draw_health(sc)
     meteors.draw(sc)
     powerups.draw(sc)
+    draw_powerup_timer(sc)
     pygame.display.update()
 
 main_menu()
