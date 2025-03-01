@@ -76,18 +76,14 @@ spawn_delay = 1000
 boss_active = False
 boss_2_active = False
 boss_timer = 0
-vol = 0.4
 music_enabled = True
 ufo_charges = []
 
-# Загрузка метеоритов
 pygame.time.set_timer(pygame.USEREVENT, spawn_delay)
 
-# Загрузка звуков
 music_volume = 0.5
 pygame.mixer.music.set_volume(music_volume)
 
-# Ползунок
 slider_start_x = 10
 slider_end_x = 210
 slider_y = 100
@@ -95,20 +91,19 @@ slider_width = 200
 slider_height = 5
 marker_radius = 10
 
-# Начальная позиция маркера
 slider_x = slider_start_x + int(music_volume * slider_width)
 
 dragging = False
 bg_music = pygame.mixer.Sound("sounds/bgmusic.ogg")
-bg_music.set_volume(vol)
+bg_music.set_volume(music_volume)
 boss_music = pygame.mixer.Sound("sounds/boss_music.ogg")
-boss_music.set_volume(vol)
+boss_music.set_volume(music_volume)
 br_m = pygame.mixer.Sound("sounds/vitayuschiy-v-oblakah-mechtatel-321.ogg")
-br_m.set_volume(vol)
+br_m.set_volume(music_volume)
 putin_core = pygame.mixer.Sound("sounds/vyi-rabotat-budete.ogg")
-putin_core.set_volume(vol)
+putin_core.set_volume(music_volume)
 col_music = pygame.mixer.Sound("sounds/inecraft_damage.ogg")
-col_music.set_volume(vol)
+col_music.set_volume(music_volume)
 
 class UFOBoss:
     def __init__(self):
@@ -145,7 +140,6 @@ class GreenBall:
 
     def kill(self):
         ufo_charges.remove(self)
-
 
 class PowerUp(pygame.sprite.Sprite):
     def __init__(self, x, image, power_type, group):
@@ -272,12 +266,13 @@ class Player(pygame.sprite.Sprite):
             sc.blit(shield_overlay, (shield_x, shield_y))
 
     def handle_collision(self, sprite_group, collision_type):
-        global game_over
+        global game_over, active_powerups
         for sprite in sprite_group:
             if self.hitbox.colliderect(sprite.rect):
                 sprite.kill()
                 if self.is_shielded:
                     self.is_shielded = False
+                    active_powerups["Щит"] = 0
                 elif self.invincibility_timer == 0:
                     self.health -= 1
                     self.invincibility_timer = 60
@@ -353,7 +348,7 @@ class Laser(pygame.sprite.Sprite):
 
 def create_powerup(group):
     max_attempts = 10
-    if random.randint(1, 10) > 9:
+    if random.randint(1, 10) > 8:
         for _ in range(max_attempts):
             x = random.randint(20, W - 20)
             powerup_rect = pygame.Rect(x, 0, 70, 65)
@@ -460,7 +455,7 @@ def main_menu():
                     rules_menu()
 
 def settings_menu():
-    global vol, dragging, music_volume, slider_start_x
+    global dragging, music_volume, slider_start_x
 
 
     slider_x = slider_start_x + int(music_volume * slider_width)
@@ -491,11 +486,10 @@ def settings_menu():
                     dragging = True
 
             elif event.type == pygame.MOUSEBUTTONUP:
-                dragging = False  # Отпускаем маркер
+                dragging = False
 
             elif event.type == pygame.MOUSEMOTION:
                 if dragging:
-                    # Обновляем позицию ползунка в пределах линии
                     slider_x = max(slider_start_x, min(slider_end_x, event.pos[0]))
                     music_volume = (slider_x - slider_start_x) / slider_width
                     pygame.mixer.music.set_volume(music_volume)
@@ -505,11 +499,9 @@ def settings_menu():
                     putin_core.set_volume(music_volume)
                     col_music.set_volume(music_volume)
 
-        # Отрисовка элементов
         pygame.draw.line(sc, GRAY, (slider_start_x, slider_y), (slider_end_x, slider_y), slider_height)
         pygame.draw.circle(sc, RED, (slider_x, slider_y), marker_radius)
 
-        # Текст с уровнем громкости
         volume_text = font.render(f"Громкость: {int(music_volume * 100)}%", True, WHITE)
         sc.blit(volume_text, (10, slider_y + 25))
 
@@ -546,47 +538,37 @@ def draw_powerup_timer(sc):
         sc.blit(timer_text, timer_rect)
         y_offset += 40
 
-# Инициализация групп спрайтов
 meteors = pygame.sprite.Group()
 powerups = pygame.sprite.Group()
 boss_lasers = pygame.sprite.Group()
 
-# Инициализация игрока
 player = Player(W//2 - 64, H - 210, player_speed)
 
-# Инициализация экрана
 sc = pygame.display.set_mode((W, H))
 clock = pygame.time.Clock()
 
 
 def handle_game_over():
-    global game_over, score, record, powerups, ufo_charges, boss_active, boss, spawn_delay, fl_music, paused, music_enabled, boss_music, elapsed_time
+    global game_over, score, record, powerups, ufo_charges, spawn_delay, paused, music_enabled, boss_music, elapsed_time
 
-    # Остановка музыки и воспроизведение звука завершения игры
     music_enabled = False
     toggle_music()
     boss_music.stop()
     br_m.play()
 
-    # Обновление рекорда, если текущий счет больше
     if score > record:
         record = score
         with open("record.json", "w") as f:
             json.dump(record, f)
 
-    # Основной цикл экрана завершения игры
     while game_over:
-        # Отрисовка фона
         sc.blit(bg_2, (0, 0))
 
-        # Шрифт для текста
         f1 = pygame.font.Font(None, 36)
 
-        # Заголовок "Игра окончена!"
         title = f1.render("Игра окончена!", True, BLACK, WHITE)
         sc.blit(title, (W // 2 - 100, H // 4 - 50))
 
-        # Отображение счета и рекорда
         score_text = f1.render(f"Ваш счет: {score}", True, BLACK, WHITE)
         record_text = f1.render(f"Рекорд: {record}", True, BLACK, WHITE)
         sc.blit(score_text, (W // 2 - 80, H // 4 + 50))
@@ -599,7 +581,6 @@ def handle_game_over():
         time_text = f1.render(f"Вы продержались: {minutes}:{seconds:02}", True, BLACK, WHITE)
         sc.blit(time_text, (W // 2 - 160, H // 4))
 
-        # Кнопки "Играть снова" и "Выход" и "Главное меню"
         play_again_button = f1.render("Играть снова", True, BLACK, GREEN)
         exit_button = f1.render("Выход", True, BLACK, GREEN)
         main_button = f1.render("Главное меню", True, BLACK, GREEN)
@@ -612,10 +593,8 @@ def handle_game_over():
         sc.blit(exit_button, exit_button_rect)
         sc.blit(main_button, main_button_rect)
 
-        # Обновление экрана
         pygame.display.flip()
 
-        # Обработка событий
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -623,22 +602,17 @@ def handle_game_over():
 
             if event.type == pygame.MOUSEBUTTONDOWN:
                 x, y = event.pos
-                # Если нажата кнопка "Играть снова"
                 if play_again_button_rect.collidepoint(x, y):
-                    # Сброс состояния игры
-                    resert()  # Выход из функции и возврат в основной цикл
-                # Если нажата кнопка "Главное меню"
+                    resert()
                 elif main_button_rect.collidepoint(x, y):
                     main_menu()
 
-
-                # Если нажата кнопка "Выход"
                 elif exit_button_rect.collidepoint(x, y):
                     pygame.quit()
                     exit()
 
 def resert():
-    global game_over, score, meteors, powerups, ufo_charges, boss_lasers, boss_active, boss_2_active, boss, boss_2, meteor_speed, spawn_delay, player, music_enabled, game_start_time, active_powerups
+    global player_speed, game_over, score, meteors, powerups, ufo_charges, boss_lasers, boss_active, boss_2_active, boss, boss_2, meteor_speed, spawn_delay, player, music_enabled, game_start_time, active_powerups
     player = None
     player = Player(W//2 - 64, H - 210, player_speed)
     meteors.empty()
@@ -662,7 +636,7 @@ def resert():
 
 # Example of modularizing the game loop
 def handle_events():
-    global paused, boss_active, boss_2_active, br_m, putin_core, vol, boss, boss_2, boss_timer, spawn_delay, meteor_speed, ufo_charges, music_enabled
+    global paused, boss_active, boss_2_active, br_m, putin_core, boss, boss_2, boss_timer, spawn_delay, meteor_speed, ufo_charges, music_enabled
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             exit()
