@@ -275,7 +275,7 @@ class Player(pygame.sprite.Sprite):
                     active_powerups["Щит"] = 0
                 elif self.invincibility_timer == 0:
                     self.health -= 1
-                    self.invincibility_timer = 60
+                    self.invincibility_timer = 30
                     if self.health <= 0:
                         game_over = True
                     col_music.play()
@@ -529,12 +529,12 @@ def rules_menu():
 def draw_powerup_timer(sc):
     global active_powerups, colors
     font = pygame.font.Font(None, 36)
-    y_offset = 60
+    y_offset = 135
 
     for powerup_name, time_left in active_powerups.items():
         timer_text = font.render(f"{powerup_name}: {int(time_left)}s", True, colors.get(powerup_name, WHITE))
         timer_rect = timer_text.get_rect(topright=(W - 20, y_offset))
-        pygame.draw.rect(sc, BLACK, (timer_rect.x - 10, timer_rect.y - 5, timer_rect.width + 20, timer_rect.height + 10), border_radius=10)
+        pygame.draw.rect(sc, GRAY,(timer_rect.x - 10, timer_rect.y - 5, timer_rect.width + 20, timer_rect.height + 10), border_radius=10)
         sc.blit(timer_text, timer_rect)
         y_offset += 40
 
@@ -634,7 +634,31 @@ def resert():
     toggle_music()
     game_start_time = time.time()
 
-# Example of modularizing the game loop
+def handle_boss_spawn():
+    global boss_active, boss_2_active, boss, boss_2, boss_timer, music_enabled
+    if score == 45 and not boss_active:
+        music_enabled = False
+        toggle_music()
+        boss_music.play()
+        boss = UFOBoss()
+        boss_active = True
+        boss_timer = pygame.time.get_ticks()
+
+    if score == 20 and not boss_2_active:
+        music_enabled = False
+        toggle_music()
+        boss_music.play()
+        boss_2 = LaserBoss()
+        boss_2_active = True
+        boss_timer = pygame.time.get_ticks()
+
+def handle_difficulty_increase():
+    global meteor_speed, spawn_delay
+    if score % 5 == 0 and score > 0:
+        meteor_speed += 0.2
+        spawn_delay = max(400, spawn_delay - 50)
+        pygame.time.set_timer(pygame.USEREVENT, spawn_delay)
+
 def handle_events():
     global paused, boss_active, boss_2_active, br_m, putin_core, boss, boss_2, boss_timer, spawn_delay, meteor_speed, ufo_charges, music_enabled
     for event in pygame.event.get():
@@ -650,26 +674,8 @@ def handle_events():
         elif event.type == pygame.USEREVENT + 2:
             player.speed = 7
 
-        if score == 45 and not boss_active:
-            music_enabled = False
-            toggle_music()
-            boss_music.play()
-            boss = UFOBoss()
-            boss_active = True
-            boss_timer = pygame.time.get_ticks()
-
-        if score == 20 and not boss_2_active:
-            music_enabled = False
-            toggle_music()
-            boss_music.play()
-            boss_2 = LaserBoss()
-            boss_2_active = True
-            boss_timer = pygame.time.get_ticks()
-
-        if score % 5 == 0 and score > 0:
-            meteor_speed += 0.2
-            spawn_delay = max(400, spawn_delay - 50)
-            pygame.time.set_timer(pygame.USEREVENT, spawn_delay)
+        handle_boss_spawn()
+        handle_difficulty_increase()
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             x, y = event.pos
@@ -698,7 +704,7 @@ def handle_events():
                 meteor_speed = 5
 
 def update_game_state():
-    global paused, boss, powerup_timer, active_powerups
+    global paused, boss, active_powerups
     if not paused:
         player.update()
         meteors.update(H)
@@ -713,9 +719,9 @@ def update_game_state():
             ball.update()
 
     for powerup_name in list(active_powerups.keys()):
-        active_powerups[powerup_name] -= 1 / FPS  # Уменьшение времени
+        active_powerups[powerup_name] -= 1 / FPS
         if active_powerups[powerup_name] <= 0:
-            del active_powerups[powerup_name]  # Удаление улучшения, если время истекло
+            del active_powerups[powerup_name]
             if powerup_name == "Щит":
                 player.is_shielded = False
             elif powerup_name == "Ускорение":
