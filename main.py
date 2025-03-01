@@ -30,9 +30,13 @@ ufo_image = pygame.image.load("images/ufo.png")
 ufo_image = pygame.transform.scale(ufo_image, (170, 110))
 ufo_rect = ufo_image.get_rect(centerx = W//2, centery = 100)
 
-boss_image = pygame.image.load("images/LazerBoss.png")
-boss_image = pygame.transform.scale(boss_image, (565 // 6, 920 // 6))
-boss_rect = boss_image.get_rect(centerx = W//2, centery = 100)
+# boss_image = pygame.image.load("images/LazerBoss.png")
+# boss_image = pygame.transform.scale(boss_image, (565 // 6, 920 // 6))
+# boss_rect = boss_image.get_rect(centerx = W//2, centery = 100)
+
+boss_chicken_image = pygame.image.load("images/chicken.png")
+boss_chicken_image = pygame.transform.scale(boss_chicken_image, (976 // 6, 928 // 6))
+boss_chicken_rect = boss_chicken_image.get_rect(centerx = W//2, centery = 100)
 
 full_heart = pygame.image.load("images/full_heart.png")
 empty_heart = pygame.image.load("images/empty_heart.png")
@@ -47,6 +51,7 @@ walk_no_movement_left = [pygame.image.load(f'images/no movement/left/{i}.png') f
 walk_no_movement_right = [pygame.image.load(f'images/no movement/right/{i}.png') for i in range(1, 10)]
 walk_right = [pygame.image.load(f'images/right/{i}.png') for i in range(1, 8)]
 meteor_frames = [pygame.image.load(f'images/meteorit/{i}.png') for i in range(1, 7)]
+laser_boss = [pygame.image.load(f'images/LaserBoss/{i}.png') for i in range(1, 5)]
 
 shield_img = pygame.image.load("images/shield.png")
 booster_img = pygame.image.load("images/booster.png")
@@ -65,6 +70,7 @@ game_start_time = 0
 elapsed_time = None
 boss = None
 boss_2 = None
+boss_chicken = None
 paused = False
 game_over = False
 score = 0
@@ -75,6 +81,7 @@ ufo_speed = 3
 spawn_delay = 1000
 boss_active = False
 boss_2_active = False
+boss_chicken_active = False
 boss_timer = 0
 music_enabled = True
 ufo_charges = []
@@ -104,6 +111,79 @@ putin_core = pygame.mixer.Sound("sounds/vyi-rabotat-budete.ogg")
 putin_core.set_volume(music_volume)
 col_music = pygame.mixer.Sound("sounds/inecraft_damage.ogg")
 col_music.set_volume(music_volume)
+
+class Chicken:
+    def __init__(self):
+        self.image = pygame.image.load("images/chicken.png")
+        self.image = pygame.transform.scale(self.image, (976 // 8, 928 // 8))
+        self.rect = self.image.get_rect(midtop=(W // 2, 20))
+        self.speed = 3
+        self.direction = 1
+        self.attack_cooldown = 100
+        self.eggs = pygame.sprite.Group()  # Группа для хранения яиц
+
+    def move(self):
+        self.rect.x += self.speed
+        if self.rect.right > W or self.rect.left < 0:
+            self.speed = -self.speed
+
+    def attack(self):
+        if self.attack_cooldown <= 0:
+            egg = Egg(self.rect.centerx, self.rect.bottom, 5)
+            self.eggs.add(egg)
+            self.attack_cooldown = 100
+        else:
+            self.attack_cooldown -= 1
+
+    def update(self):
+        self.move()
+        self.attack()
+        self.eggs.update()
+
+    def draw(self, screen):
+        screen.blit(self.image, self.rect)
+        self.eggs.draw(screen)
+
+class Egg(pygame.sprite.Sprite):
+    def __init__(self, x, y, speed):
+        super().__init__()
+        self.image = pygame.image.load("images/egg.png")
+        self.image = pygame.transform.scale(self.image, (64, 64))
+        self.rect = self.image.get_rect(center=(x, y))
+        self.speed = speed
+        self.exploded = False
+
+    def update(self):
+        if not self.exploded:
+            self.rect.y += self.speed
+            if self.rect.y >= H // 3:
+                self.explode()
+
+    def explode(self):
+        self.exploded = True
+        for _ in range(8):  # 8 перьев
+            feather = Feather(self.rect.centerx, self.rect.centery)
+            feathers.add(feather)
+        self.kill()
+
+class Feather(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.image = pygame.image.load("images/feather.png")
+        self.image = pygame.transform.scale(self.image, (64, 64))
+        self.rect = self.image.get_rect(center=(x, y))
+        self.speed_x = random.choice([-3, -2, 2, 3])
+        self.speed_y = random.choice([-3, -2, 2, 3])
+
+    def update(self):
+        self.rect.x += self.speed_x
+        self.rect.y += self.speed_y
+
+        if self.rect.right < 0 or self.rect.left > W or self.rect.bottom < 0 or self.rect.top > H:
+            self.kill()
+
+    def draw(self, screen):
+        screen.blit(self.image, self.rect)
 
 class UFOBoss:
     def __init__(self):
@@ -288,19 +368,29 @@ class Player(pygame.sprite.Sprite):
         self.handle_collision(meteors, 'meteor')
         self.handle_collision(ufo_charges, 'ufo_charge')
         self.handle_collision(boss_lasers, 'laser')
+        self.handle_collision(feathers, 'feather')
 
-class LaserBoss():
+class LaserBoss:
     def __init__(self):
         super().__init__()
-        self.image = boss_image
-        self.rect = self.image.get_rect(midtop=(W // 2, 10))
+        self.boss_image = laser_boss[0]
+        self.boss_image = pygame.transform.scale(self.boss_image, (565 // 6, 920 // 6))
+        self.boss_rect = self.boss_image.get_rect(centerx = W//2, centery = 100)
+        self.animation_frames = laser_boss
+        self.animation_speed = 15
         self.speed = 3
         self.direction = 1
         self.shoot_timer = 100
+        self.count = 0
+
+    def animation(self):
+        self.count = (self.count + 1) % (len(self.animation_frames) * self.animation_speed)
+        frame_index = self.count // self.animation_speed
+        sc.blit(pygame.transform.scale(self.animation_frames[frame_index], (565 // 6, 920 // 6)), (self.boss_rect.x, self.boss_rect.y))
 
     def move(self):
-        boss_rect.x += self.speed
-        if boss_rect.right > W or boss_rect.left < 0:
+        self.boss_rect.x += self.speed
+        if self.boss_rect.right > W or self.boss_rect.left < 0:
             self.speed = -self.speed
 
         self.shoot_timer -= 1
@@ -311,8 +401,8 @@ class LaserBoss():
     def shoot(self):
         angles = [-20, -15, -10, 10, 15, 20]
         hand_positions = [
-            (boss_rect.left, 100),
-            (boss_rect.right, 100)
+            (self.boss_rect.left, 100),
+            (self.boss_rect.right, 100)
         ]
 
         for pos in hand_positions:
@@ -541,6 +631,8 @@ def draw_powerup_timer(sc):
 meteors = pygame.sprite.Group()
 powerups = pygame.sprite.Group()
 boss_lasers = pygame.sprite.Group()
+eggs = pygame.sprite.Group()
+feathers = pygame.sprite.Group()
 
 player = Player(W//2 - 64, H - 210, player_speed)
 
@@ -612,18 +704,21 @@ def handle_game_over():
                     exit()
 
 def resert():
-    global player_speed, game_over, score, meteors, powerups, ufo_charges, boss_lasers, boss_active, boss_2_active, boss, boss_2, meteor_speed, spawn_delay, player, music_enabled, game_start_time, active_powerups
+    global player_speed, game_over, score, meteors, powerups, ufo_charges, boss_lasers, boss_active, boss_2_active, boss_chicken_active, boss, boss_2, boss_chicken, meteor_speed, spawn_delay, player, music_enabled, game_start_time, active_powerups
     player = None
     player = Player(W//2 - 64, H - 210, player_speed)
     meteors.empty()
     powerups.empty()
+    feathers.empty()
     boss_lasers.empty()
     ufo_charges.clear()
     active_powerups = {}
     boss_active = False
     boss_2_active = False
+    boss_chicken_active = False
     boss = None
     boss_2 = None
+    boss_chicken = None
     score = 0
     meteor_speed = 5
     spawn_delay = 1000
@@ -635,7 +730,7 @@ def resert():
     game_start_time = time.time()
 
 def handle_boss_spawn():
-    global boss_active, boss_2_active, boss, boss_2, boss_timer, music_enabled
+    global boss_active, boss_2_active, boss_chicken_active, boss, boss_2, boss_chicken, boss_timer, music_enabled
     if score == 45 and not boss_active:
         music_enabled = False
         toggle_music()
@@ -652,6 +747,14 @@ def handle_boss_spawn():
         boss_2_active = True
         boss_timer = pygame.time.get_ticks()
 
+    if score == 60 and not boss_chicken_active:
+        music_enabled = False
+        toggle_music()
+        boss_music.play()
+        boss_chicken = Chicken()
+        boss_chicken_active = True
+        boss_timer = pygame.time.get_ticks()
+
 def handle_difficulty_increase():
     global meteor_speed, spawn_delay
     if score % 5 == 0 and score > 0:
@@ -660,13 +763,13 @@ def handle_difficulty_increase():
         pygame.time.set_timer(pygame.USEREVENT, spawn_delay)
 
 def handle_events():
-    global paused, boss_active, boss_2_active, br_m, putin_core, boss, boss_2, boss_timer, spawn_delay, meteor_speed, ufo_charges, music_enabled
+    global paused, boss_active, boss_2_active, boss_chicken_active, br_m, putin_core, boss, boss_2, boss_chicken, boss_timer, spawn_delay, meteor_speed, ufo_charges, music_enabled
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             exit()
         elif event.type == pygame.USEREVENT:
             if not paused:
-                if not(boss_active) and not(boss_2_active):
+                if not(boss_active) and not(boss_2_active) and not(boss_chicken_active):
                     createMeteorit(meteors)
                 create_powerup(powerups)
         elif event.type == pygame.USEREVENT + 1:
@@ -693,18 +796,24 @@ def handle_events():
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_p:
                 paused = not paused
+
+            elif event.key == pygame.K_ESCAPE:
+                main_menu()
+
             if pygame.time.get_ticks() - boss_timer >= 22000:
                 boss_music.stop()
                 music_enabled = True
                 toggle_music()
                 boss_active = False
                 boss_2_active = False
+                boss_chicken_active = False
                 boss = None
                 boss_2 = None
+                boss_chicken = None
                 meteor_speed = 5
 
 def update_game_state():
-    global paused, boss, active_powerups
+    global paused, active_powerups
     if not paused:
         player.update()
         meteors.update(H)
@@ -714,6 +823,9 @@ def update_game_state():
             boss.shoot()
         if boss_2_active:
             boss_2.move()
+        if boss_chicken_active:
+            boss_chicken.update()
+        feathers.update()
         boss_lasers.update()
         for ball in ufo_charges:
             ball.update()
@@ -735,11 +847,15 @@ def render_game():
         sc.blit(ufo_image, ufo_rect)
 
     if boss_2_active:
-        sc.blit(boss_image, boss_rect)
+        boss_2.animation()
+
+    if boss_chicken_active:
+        boss_chicken.draw(sc)
 
     for ball in ufo_charges:
         ball.draw(sc)
 
+    feathers.draw(sc)
     boss_lasers.draw(sc)
     draw_score(score)
     player.collides()
